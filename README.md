@@ -4,6 +4,29 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠�
 
 这是独立运行的非官方工具。它读取本机 Codex 的账户与会话数据，不修改 Codex 安装文件，也不替换原版桌宠。
 
+## 演示
+
+以下图片由当前程序实际渲染，标题、对话内容与用量均为示例数据。宠物外观取决于本机已安装的素材。
+
+![桌宠、对话摘要、三圆环与用量面板](docs/images/overview.png)
+
+<details>
+<summary>查看悬停动画、统计范围和桌宠聊天</summary>
+
+**三圆环悬停展开与面板开关**
+
+![三圆环和用量面板交互动画](docs/images/interaction.gif)
+
+**30天、7天、今日统计**
+
+![三个统计范围的固定柱数与合计](docs/images/usage-ranges.png)
+
+**桌宠内聊天**
+
+![聊天输入条与示例回复](docs/images/chat.png)
+
+</details>
+
 ## 功能
 
 - **三个圆形入口**：聊天、运行状态、额度。悬停时只有对应入口展开，宽度一致。
@@ -23,7 +46,7 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠�
 - Windows 10 / 11。
 - Python 3.10 或更高版本；当前版本在 Python 3.10 上验证。
 - 已安装并登录 Codex 桌面应用，且本机可使用其 `app-server`。
-- 本机已经安装兼容的宠物素材。程序读取 `%CODEX_HOME%\pets`，未设置时使用 `%USERPROFILE%\.codex\pets`。仓库不包含宠物素材。
+- 本机已经安装兼容的宠物素材。程序读取 `%CODEX_HOME%\pets`，未设置时使用 `%USERPROFILE%\.codex\pets`。仓库不包含可供运行的宠物精灵表。
 
 依赖版本见 [requirements.txt](requirements.txt)。当前宠物读取器支持宽1536、高1872或2288的既有精灵表，每帧192×208。
 
