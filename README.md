@@ -38,6 +38,7 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠�
 - **桌宠内聊天**：支持流式回复、附件、停止回复、草稿恢复，以及基本审批和文字提问。点击聊天区域外收起。
 - **语音输入**：聊天入口中的语音按钮调用 Windows `Win+H` 听写；识别后由用户手动发送。
 - **清晰图标与动画**：使用矢量软件图标、透明背景、圆角、阴影和可中途反向衔接的展开动画。
+- **随 Codex 启动**：启用后，Codex 主窗口出现时自动打开桌宠，重复打开不会出现多只。
 
 右键宠物不弹设置。悬停文字提示已关闭。面板中的 Codex 标题可打开宠物大小、选择宠物、退出三个菜单项。
 
@@ -69,6 +70,25 @@ python pet_usage.py
 ```
 
 启动失败时查看同目录的 `startup-error.log`。如果同时出现两只宠物，可在 Codex 中隐藏原版悬浮宠物。
+
+### 随 Codex 启动
+
+双击 **`随Codex启动.vbs`** 启用。检查程序会在后台运行，检测到 Codex 主窗口后启动桌宠；如果 Codex 已经打开，会立即启动。检测间隔为1秒，不会启动 Codex 本身，也不会把 Codex 命令行或普通 ChatGPT 当作桌面主窗口。
+
+启用时会添加当前用户的 Windows 登录启动项 `CodexPetUsageWatcher`，以后登录 Windows 后继续检测，无需管理员权限。手动退出桌宠后，只要 Codex 主窗口持续打开，就不会反复弹回；下次打开 Codex 主窗口时再启动。桌宠仍可独立运行。
+
+双击 **`取消随Codex启动.vbs`** 可移除该启动项并停止后台检测。移动项目目录或更换 Python 环境后，在新位置重新启用即可。
+
+也可以使用 PowerShell：
+
+```powershell
+# 启用
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -FollowCodex
+# 取消
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCodex
+```
+
+自动启动相关错误写入 `work/autostart.log`，该文件不随源码提交。
 
 ## 数据与统计口径
 
@@ -102,6 +122,7 @@ python pet_usage.py
 | `codex_data.py` | 只读账户与会话数据读取 |
 | `usage_series.py` | 按日期与小时整理固定柱数的数据 |
 | `quota_estimate.py` | 根据观测消耗估算剩余请求次数 |
+| `pet_autostart.py` | 当前用户的自动启动配置与 Codex 主窗口检测 |
 
 ## 验证
 
@@ -110,9 +131,12 @@ python pet_usage.py
 ```powershell
 python tests/verify_usage_series.py
 python tests/verify_quota_estimate.py
+python tests/verify_autostart.py
 ```
 
 本机已检查实际1.3倍渲染、圆环点击、面板开关、动画中间帧避让、固定30/7/24根柱和聊天外部点击收起。Windows 麦克风的实际识别效果未纳入自动检查。
+
+随 Codex 启动已检查实际主窗口识别、自动打开桌宠、后台检测的启停和单实例；窗口关闭／重开与扫描失败场景通过模拟序列验证。
 
 界面详细说明见 [使用说明.md](使用说明.md)。账户与会话接口依赖本机 Codex 版本，接口变化时可能需要适配。
 
