@@ -1,5 +1,9 @@
 # Codex Pet Usage
 
+![三圆环和用量面板交互动画](docs/images/interaction.gif)
+
+*悬停展开与面板开关演示，使用示例数据。*
+
 Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠内聊天。界面使用 PySide6，默认显示比例为原始布局的 **1.3 倍**。
 
 这是独立运行的非官方工具。它读取本机 Codex 的账户与会话数据，不修改 Codex 安装文件，也不替换原版桌宠。
@@ -11,11 +15,7 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠�
 ![桌宠、对话摘要、三圆环与用量面板](docs/images/overview.png)
 
 <details>
-<summary>查看悬停动画、统计范围和桌宠聊天</summary>
-
-**三圆环悬停展开与面板开关**
-
-![三圆环和用量面板交互动画](docs/images/interaction.gif)
+<summary>查看统计范围和桌宠聊天</summary>
 
 **30天、7天、今日统计**
 
