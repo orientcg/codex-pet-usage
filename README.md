@@ -1,46 +1,38 @@
 # Codex Pet Usage
 
-![三圆环和用量面板交互动画](docs/images/interaction.gif)
+![运行与额度双圆环交互动画](docs/images/interaction.gif)
 
 *悬停展开与面板开关演示，使用示例数据。*
 
-Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠内聊天。界面使用 PySide6。
+Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和原生对话进度摘要。界面使用 PySide6。
 
-这是独立运行的非官方工具。它读取本机 Codex 的账户与会话数据，不修改 Codex 安装文件，也不替换原版桌宠。
+这是独立运行的非官方工具。它只读本机 Codex 账户与会话数据，不修改 Codex 安装文件，也不替换原版桌宠。
 
 ## 演示
 
-以下图片由当前程序实际渲染，标题、对话内容与用量均为示例数据。宠物外观取决于本机已安装的素材。
+以下图片由当前程序实际渲染，标题、摘要与用量均为示例数据。宠物外观取决于本机已安装的素材。
 
-![桌宠、对话摘要、三圆环与用量面板](docs/images/overview.png)
+![桌宠、对话摘要、双圆环与用量面板](docs/images/overview.png)
 
 <details>
-<summary>查看统计范围和桌宠聊天</summary>
-
-**30天、7天、今日统计**
+<summary>查看30天、7天和今日统计</summary>
 
 ![三个统计范围的固定柱数与合计](docs/images/usage-ranges.png)
-
-**桌宠内聊天**
-
-![聊天输入条与示例回复](docs/images/chat.png)
 
 </details>
 
 ## 功能
 
-- **三个圆形入口**：聊天、运行状态、额度。悬停时只有对应入口展开，宽度一致。
-- **用量面板**：悬停中间的运行入口打开；面板贴近圆环，并避开宠物、对话摘要与聊天窗口。
+- **两个圆形入口**：运行状态、额度。悬停时只有对应入口展开，展开宽度一致。
+- **用量面板**：悬停运行入口打开；面板贴近圆环，并避开宠物与对话摘要。
 - **Token 图表**：30天显示30根日柱，7天显示7根日柱，今日显示24根小时柱；左侧显示消耗刻度，下方显示合计。
 - **额度估算**：显示五小时与每周额度进度，以及按近期实际消耗估算的剩余请求次数。
 - **上次消耗 Token**：按本机用量记录时间选择最近一次请求，展示其输入和输出合计。
-- **对话摘要**：正在工作时显示标题和最新回复摘要，并把圆环下推；点击摘要可打开对应 Codex 对话。
-- **桌宠内聊天**：支持流式回复、附件、停止回复、草稿恢复，以及基本审批和文字提问。点击聊天区域外收起。
-- **语音输入**：聊天入口中的语音按钮调用 Windows `Win+H` 听写；识别后由用户手动发送。
+- **原生对话摘要**：显示 Codex 中正在进行的对话标题和最新回复摘要，并把圆环下推；点击摘要打开 Codex 对应对话。
 - **清晰图标与动画**：使用矢量软件图标、透明背景、圆角、阴影和可中途反向衔接的展开动画。
 - **随 Codex 启动**：启用后，Codex 主窗口出现时自动打开桌宠，重复打开不会出现多只。
 
-右键宠物不弹设置。悬停文字提示已关闭。面板中的 Codex 标题可打开宠物大小、选择宠物、退出三个菜单项。
+桌宠内独立聊天、输入框、回复窗口、附件和语音入口已移除。右键宠物不弹设置；悬停文字提示已关闭。面板中的 Codex 标题可打开宠物大小、选择宠物、退出三个菜单项。
 
 ## 环境
 
@@ -53,7 +45,7 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和桌宠�
 
 ## 安装与启动
 
-下载仓库或克隆后，在项目目录中运行 PowerShell：
+下载仓库后，解压到独立目录，例如 `D:\Z-job\CodexPet`，在该目录中运行 PowerShell：
 
 ```powershell
 py -3.10 -m venv .venv
@@ -61,25 +53,19 @@ py -3.10 -m venv .venv
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
-以后可双击 `启动面板.vbs`。启动器优先使用项目的 `.venv`；也支持本机常见 Python 3.10 安装目录和 PATH 中的 `pythonw.exe`。
+以后可双击 `启动面板.vbs`。启动器优先使用项目的 `.venv`；也支持本机常见 Python 3.10 安装目录和 PATH 中的 `pythonw.exe`。推荐使用独立环境，避免登录时找不到用户级依赖。
 
-若依赖已经安装，也可直接运行：
+若依赖已经安装，也可直接运行 `python pet_usage.py`。启动失败时查看同目录的 `startup-error.log`。如果同时出现两只宠物，可在 Codex 中隐藏原版悬浮宠物。
 
-```powershell
-python pet_usage.py
-```
-
-启动失败时查看同目录的 `startup-error.log`。如果同时出现两只宠物，可在 Codex 中隐藏原版悬浮宠物。
+移动安装目录时，应在新位置重新创建 `.venv` 并安装依赖，保留 `settings.json`，再重新启用自动启动。
 
 ### 随 Codex 启动
 
-双击 **`随Codex启动.vbs`** 启用。检查程序会在后台运行，检测到 Codex 主窗口后启动桌宠；如果 Codex 已经打开，会立即启动。检测间隔为1秒，不会启动 Codex 本身，也不会把 Codex 命令行或普通 ChatGPT 当作桌面主窗口。
+双击 **`随Codex启动.vbs`** 启用。后台检查程序每秒检测一次 Codex 主窗口；已经打开 Codex 时会立即启动桌宠。
 
-启用时会添加当前用户的 Windows 登录启动项 `CodexPetUsageWatcher`，以后登录 Windows 后继续检测，无需管理员权限。手动退出桌宠后，只要 Codex 主窗口持续打开，就不会反复弹回；下次打开 Codex 主窗口时再启动。桌宠仍可独立运行。
+启用时添加当前用户的 Windows 登录启动项 `CodexPetUsageWatcher`，以后登录 Windows 后继续检测，无需管理员权限。手动退出桌宠后，只要 Codex 主窗口持续打开，就不会反复弹回；下次打开 Codex 主窗口时再启动。
 
-双击 **`取消随Codex启动.vbs`** 可移除该启动项并停止后台检测。移动项目目录或更换 Python 环境后，在新位置重新启用即可。
-
-也可以使用 PowerShell：
+双击 **`取消随Codex启动.vbs`** 可移除该启动项并停止后台检测。也可以使用 PowerShell：
 
 ```powershell
 # 启用
@@ -88,8 +74,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -FollowCodex
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCodex
 ```
 
-自动启动相关错误写入 `work/autostart.log`，该文件不随源码提交。
-
 ## 数据与统计口径
 
 - 账户额度与图表用量每分钟刷新，活动状态和最近请求用量每5秒读取。
@@ -97,18 +81,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCo
 - 今日按**北京时间 UTC+8 当天00:00**开始分为24小时，不使用滚动24小时。请求按 `response_id` 去重。
 - 账户每日统计与本机日志覆盖范围可能不同。没有记录的日期或小时保留零值位置，尚未读取的数据保持等待状态。
 - 剩余次数是观察估算：需要至少3次请求、30秒观察时间和1个百分点的额度变化。样本不足显示“采样中”，模型、请求长度和其他设备使用都会影响结果。
-- 聊天使用本机已有 Codex 登录与默认模型配置；只有点击发送或按 Enter 时才发起对话请求。不支持的原生交互会显示错误，不自动批准。
+- 仅从 Codex 读取已有活动；桌宠不创建独立对话、不发送消息或附件。
 
 ## 本地文件
 
 | 文件或目录 | 内容 |
 | --- | --- |
 | `settings.json` | 宠物位置与偏好 |
-| `quick-chat.json` | 最近聊天、会话标识、草稿与附件路径 |
-| `work/quick-chat/` | 新建桌宠对话的本地工作目录 |
+| `work/autostart.log` | 自动启动异常信息 |
 | `startup-error.log` | 启动异常信息 |
 
-这些运行数据已加入 `.gitignore`，不随源码提交。程序不写入 Codex 数据库或已有会话日志；已有聊天恢复时继续使用其保存的工作目录。
+运行数据已加入 `.gitignore`，不随源码提交。程序不写入 Codex 数据库或已有会话日志。
 
 ## 源码
 
@@ -116,9 +99,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCo
 | --- | --- |
 | `pet_usage.py` | 启动入口与错误日志 |
 | `pet_desktop.py` | 桌宠、摘要、统计面板、动画与避让 |
-| `pet_toolbar.py` | 三个圆形入口与悬停展开 |
-| `pet_quick_chat.py` | 聊天输入、回复与外部点击收起 |
-| `pet_chat.py` | Codex app-server 对话客户端 |
+| `pet_toolbar.py` | 运行、额度双圆环交互 |
 | `codex_data.py` | 只读账户与会话数据读取 |
 | `usage_series.py` | 按日期与小时整理固定柱数的数据 |
 | `quota_estimate.py` | 根据观测消耗估算剩余请求次数 |
@@ -126,17 +107,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCo
 
 ## 验证
 
-不调用模型、不读取个人日志的统计回归检查：
-
 ```powershell
 python tests/verify_usage_series.py
 python tests/verify_quota_estimate.py
 python tests/verify_autostart.py
+python tests/verify_usage_ui.py
 ```
 
-本机已检查实际1.3倍渲染、圆环点击、面板开关、动画中间帧避让、固定30/7/24根柱和聊天外部点击收起。Windows 麦克风的实际识别效果未纳入自动检查。
-
-随 Codex 启动已检查实际主窗口识别、自动打开桌宠、后台检测的启停和单实例；窗口关闭／重开与扫描失败场景通过模拟序列验证。
+统计和自动启动逻辑使用示例数据验证；界面检查覆盖双圆环独立展开、指针保持、面板开关、固定30/7/24根柱、原生摘要跳转与下推、屏幕边缘避让及聊天模块缺失。检查不调用模型或读取个人会话日志。
 
 界面详细说明见 [使用说明.md](使用说明.md)。账户与会话接口依赖本机 Codex 版本，接口变化时可能需要适配。
 

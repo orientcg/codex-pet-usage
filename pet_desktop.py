@@ -10,12 +10,11 @@ import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from PIL import Image
-from PySide6.QtCore import Qt, QTimer, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, Property
+from PySide6.QtCore import Qt, QTimer, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, Property, QObject, QEvent
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPixmap, QImage, QCursor, QPainterPath, QLinearGradient, QFontMetrics
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QListWidget, QListWidgetItem, QMenu, QGraphicsDropShadowEffect, QToolTip, QComboBox, QGraphicsScene, QGraphicsView
 from codex_data import BASE, HOME, read_json, fetch_account, scan_sessions, session_snapshot, session_names, last_request_usage, RollingUsage
-from pet_quick_chat import QuickChat
 from pet_toolbar import Toolbar
 from usage_series import fixed_usage_series, local_now
 
@@ -26,6 +25,11 @@ FRAME_COUNTS = [6, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8]
 STATE_NAMES = {'running': '正在工作', 'ready': '已完成', 'stopped': '已中断', 'unknown': '状态待确认'}
 DEFAULT_UI_SCALE = 1.3
 _display_scale_configured = False
+
+
+class NoToolTips(QObject):
+    def eventFilter(self, source, event):
+        return event.type() == QEvent.Type.ToolTip or super().eventFilter(source, event)
 
 
 def configure_display_scale():
@@ -776,6 +780,8 @@ class DesktopPet(QWidget):
         self.setWindowTitle('Codex Pet · 桌宠')
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMouseTracking(True)
+        self.tooltip_filter = NoToolTips(self)
+        QApplication.instance().installEventFilter(self.tooltip_filter)
         self.settings = read_json(BASE/'settings.json', {})
         self.selection = self.settings.get('session', 'auto')
         self.pet_size = self.settings.get('pet_size', 112)
@@ -806,9 +812,7 @@ class DesktopPet(QWidget):
         self.stack_motion.setDuration(190)
         self.stack_motion.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.stack_motion.finished.connect(self.finish_stack_layout)
-        self.stack_motion.valueChanged.connect(lambda _: self.position_composer())
         self.stack_target_height = 0
-        self.composer = QuickChat(self)
         self.load_pet()
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(max(screen.left(), min(self.settings.get('x', screen.right()-300), screen.right()-self.width()+1)), max(screen.top(), min(self.settings.get('y', screen.bottom()-260), screen.bottom()-self.height()+1)))
@@ -863,17 +867,13 @@ class DesktopPet(QWidget):
     def layout_stack(self, animated=True):
         body_height = round(self.pet_size*208/192)
         summary_gap = self.speech.height()+8 if self.speech.isVisible() else 0
-        target = QPoint(8, body_height+5+summary_gap)
-        if self.composer.isVisible():
-            self.composer.fit_screen_height()
-        row_height = self.composer.height() if self.composer.isVisible() else self.toolbar.height()
-        self.stack_target_height = target.y()+row_height+5
+        target = QPoint((self.width()-self.toolbar.width())//2, body_height+5+summary_gap)
+        self.stack_target_height = target.y()+self.toolbar.height()+5
         self.setFixedHeight(max(self.height(), self.stack_target_height))
         screen = self.screen().availableGeometry()
         if self.y()+self.stack_target_height > screen.bottom()+1:
             self.move(self.x(), max(screen.top(), screen.bottom()-self.stack_target_height+1))
         self.speech.position_near_pet()
-        self.position_composer()
         if animated and self.toolbar.pos() != target:
             if self.stack_motion.endValue() != target or self.stack_motion.state() != QPropertyAnimation.State.Running:
                 self.stack_motion.stop()
@@ -890,13 +890,8 @@ class DesktopPet(QWidget):
     def finish_stack_layout(self):
         self.setFixedHeight(self.stack_target_height)
         self.speech.position_near_pet()
-        self.position_composer()
         if self.panel.isVisible():
             self.panel.place_near_pet()
-
-    def position_composer(self):
-        if self.composer.isVisible():
-            self.composer.position_in_stack()
 
     def sprite_global_rect(self):
         return QRect(self.x()+(self.width()-self.pet_size)//2-2, self.y()-2, self.pet_size+4, round(self.pet_size*208/192)+4)
@@ -909,8 +904,6 @@ class DesktopPet(QWidget):
             rects.append(QRect(self.toolbar.mapToGlobal(QPoint()), self.toolbar.size()))
         if self.speech.isVisible():
             rects.append(self.speech.frameGeometry().adjusted(-3, -3, 3, 3))
-        if self.composer.isVisible():
-            rects.append(self.composer.frameGeometry().adjusted(-3, -3, 3, 3))
         return rects
 
     def visual_obstacles(self):
@@ -943,11 +936,6 @@ class DesktopPet(QWidget):
         self.update()
 
     def handle_pointer(self, mouse, now):
-        if self.composer.isVisible():
-            self.toolbar.hide()
-            self.capsule_hover_since = None
-            self.panel_leave_since = None
-            return
         if self.frameGeometry().contains(mouse):
             self.hover_until = now+.65
         self.toolbar.setVisible(True)
@@ -972,7 +960,7 @@ class DesktopPet(QWidget):
             else:
                 if self.panel_leave_since is None:
                     self.panel_leave_since = now
-                other_ring = self.toolbar.item_at(self.toolbar.mapFromGlobal(mouse)) in (0, 2)
+                other_ring = self.toolbar.item_at(self.toolbar.mapFromGlobal(mouse)) == self.toolbar.QUOTA_INDEX
                 grace = .18 if not other_ring and self.panel.in_transfer_gap(mouse) else .06
                 if now-self.panel_leave_since >= grace:
                     self.panel.retract()
@@ -1013,7 +1001,6 @@ class DesktopPet(QWidget):
                 self.react(1 if target.x() >= self.x() else 2, .3)
                 self.move(target)
                 self.speech.position_near_pet()
-                self.position_composer()
                 if self.panel.isVisible():
                     self.panel.place_near_pet()
 
@@ -1058,16 +1045,6 @@ class DesktopPet(QWidget):
             os.startfile(url)
         except OSError:
             QToolTip.showText(QCursor.pos(), '请在 Codex 主应用中打开对话。')
-
-    def new_chat(self):
-        if self.composer.isVisible():
-            self.composer.dismiss()
-        else:
-            self.composer.reveal()
-
-    def voice_chat(self):
-        self.composer.reveal()
-        self.composer.voice_input()
 
     def filtered_days(self):
         daily = self.usage.get('dailyUsageBuckets') if self.usage is not None else None
@@ -1186,7 +1163,6 @@ class DesktopPet(QWidget):
             pass
         self.panel.hide()
         self.speech.hide()
-        self.composer.shutdown()
         QApplication.quit()
 
 def main():
