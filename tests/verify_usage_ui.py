@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 assert not (Path(__file__).resolve().parents[1]/'pet_chat.py').exists()
 assert not (Path(__file__).resolve().parents[1]/'pet_quick_chat.py').exists()
 m.fetch_account = lambda: ({}, None)
+m.fetch_vps_traffic = lambda: None
 m.scan_sessions = lambda: []
 m.session_names = lambda: {}
 m.RollingUsage.read = lambda self: []
@@ -23,11 +24,12 @@ pet = m.DesktopPet()
 pet.show()
 pet.hover_timer.stop()
 QTest.qWait(220)
-for timer in (pet.tick_timer, pet.sessions_timer, pet.quota_timer, pet.queue_timer):
+for timer in (pet.tick_timer, pet.sessions_timer, pet.quota_timer, pet.queue_timer, pet.vps_timer):
     timer.stop()
 assert not hasattr(pet, 'composer') and not hasattr(pet, 'new_chat') and not hasattr(pet, 'voice_chat')
 bar, panel = pet.toolbar, pet.panel
 assert len(bar.item_rects()) == 2
+pet.vps_traffic = {'used_bytes': 126000000000, 'used_percent': 4.2}
 
 for index in (0, 1, 0, 1, None):
     anchor = bar.mapToGlobal(bar.item_rects()[index].center().toPoint()) if index is not None else None
@@ -41,6 +43,20 @@ for index in (0, 1, 0, 1, None):
         if anchor is not None:
             assert bar.item_at(bar.mapFromGlobal(anchor), keep_active=True) == index
     bar.motion.stop()
+bar.set_active(bar.QUOTA_INDEX)
+QTest.qWait(240)
+quota_rect = bar.item_rects()[bar.QUOTA_INDEX]
+assert quota_rect.width() == 136
+assert quota_rect.left() <= quota_rect.center().x()-60 and quota_rect.right() >= quota_rect.center().x()+60
+pet.grab()
+pet.vps_error = True
+pet.grab()
+pet.messages.put(('vps_error', None))
+pet.poll()
+assert pet.vps_traffic['used_bytes'] == 126000000000 and pet.vps_error
+pet.messages.put(('vps', {'used_bytes': 127000000000, 'used_percent': 4.3}))
+pet.poll()
+assert not pet.vps_error and pet.vps_traffic['used_bytes'] == 127000000000
 
 now = local_now()
 pet.limits = {'codex': {'primary': {'usedPercent': 32, 'windowDurationMins': 300, 'resetsAt': time.time()+7200},
@@ -115,4 +131,4 @@ panel.hide()
 pet.speech.hide()
 pet.hide()
 app.quit()
-print('PASS: chat module absent; two independent circles; pointer retention; run-only panel; all 30/7/24 bars; native summary link/push; safe placement; no right-click settings')
+print('PASS: chat absent; two entries; three quota/traffic rings; stale data retained on VPS failure; pointer retention; run-only panel; 30/7/24 bars; native summary; safe placement; no right-click settings')

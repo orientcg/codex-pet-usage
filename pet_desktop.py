@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QPushButton
 from codex_data import BASE, HOME, read_json, fetch_account, scan_sessions, session_snapshot, session_names, last_request_usage, RollingUsage
 from pet_toolbar import Toolbar
 from usage_series import fixed_usage_series, local_now
+from vps_traffic import fetch_vps_traffic
 
 INK = '#37313f'
 MUTED = '#96909f'
@@ -849,6 +850,7 @@ class DesktopPet(QWidget):
         self.period = '今日'
         self.account, self.limits, self.usage = {}, {}, None
         self.request_estimates = {}
+        self.vps_traffic, self.vps_error, self.vps_busy = None, False, False
         self.rolling_days = None
         self.today_usage = None
         self.usage_day = local_now().date().isoformat()
@@ -897,6 +899,10 @@ class DesktopPet(QWidget):
         self.sessions_timer = QTimer(self)
         self.sessions_timer.timeout.connect(self.scan)
         self.sessions_timer.start(5000)
+        self.vps_timer = QTimer(self)
+        self.vps_timer.timeout.connect(self.refresh_vps)
+        self.vps_timer.start(60000)
+        self.refresh_vps()
         self.refresh()
         self.scan()
 
@@ -1208,6 +1214,17 @@ class DesktopPet(QWidget):
                 self.messages.put(('scan_error', None))
         threading.Thread(target=run, daemon=True).start()
 
+    def refresh_vps(self):
+        if self.vps_busy:
+            return
+        self.vps_busy = True
+        def run():
+            try:
+                self.messages.put(('vps', fetch_vps_traffic()))
+            except Exception:
+                self.messages.put(('vps_error', None))
+        threading.Thread(target=run, daemon=True).start()
+
     def poll(self):
         try:
             while True:
@@ -1250,6 +1267,11 @@ class DesktopPet(QWidget):
                         self.panel.place_near_pet()
                 elif kind == 'scan_error':
                     self.scanning = False
+                elif kind == 'vps':
+                    self.vps_busy, self.vps_error = False, False
+                    self.vps_traffic = data
+                elif kind == 'vps_error':
+                    self.vps_busy, self.vps_error = False, True
         except queue.Empty:
             pass
         self.toolbar.update()

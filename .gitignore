@@ -9,6 +9,9 @@ venv/
 Thumbs.db
 Desktop.ini
 /settings.json
+/vps.json
+*.key
+*.ppk
 /quick-chat.json
 /startup-error.log
 /work/
