@@ -11,7 +11,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 m.fetch_account = lambda: ({}, None)
-m.fetch_vps_traffic = lambda: None
 m.scan_sessions = lambda: []
 m.session_names = lambda: {}
 m.RollingUsage.read = lambda self: []
@@ -19,7 +18,7 @@ m.configure_display_scale()
 app = QApplication([])
 pet = m.DesktopPet()
 pet.show()
-for timer in (pet.hover_timer, pet.sessions_timer, pet.quota_timer, pet.tick_timer, pet.vps_timer):
+for timer in (pet.hover_timer, pet.sessions_timer, pet.quota_timer, pet.tick_timer):
     timer.stop()
 QTest.qWait(200)
 pet.queue_timer.stop()

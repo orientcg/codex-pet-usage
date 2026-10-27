@@ -1,8 +1,0 @@
-{
-  "host": "example.invalid",
-  "port": 22,
-  "user": "root",
-  "identity_file": "C:/Users/YourName/AppData/Local/CodexPetUsage/private/traffic_ed25519",
-  "known_hosts": "C:/Users/YourName/AppData/Local/CodexPetUsage/private/traffic_known_hosts",
-  "limit_bytes": 3000000000000
-}

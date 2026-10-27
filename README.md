@@ -27,7 +27,6 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和原生�
 - **用量面板**：悬停运行入口打开；面板贴近圆环，并避开宠物与对话摘要。
 - **Token 图表**：30天显示30根日柱，7天显示7根日柱，今日显示24根小时柱；左侧显示消耗刻度，下方显示合计。
 - **额度估算**：显示五小时与每周额度进度，以及按近期实际消耗估算的剩余请求次数。
-- **VPS 流量圈**：额度入口展开后依次显示5h、周额度、VPS流量；流量圈中心为已用流量（G/T），弧线表示月额度消耗占比。连接失败时保留上次数据并把弧线变灰。
 - **上次消耗 Token**：按本机用量记录时间选择最近一次请求，展示其输入和输出合计。
 - **原生对话摘要**：显示 Codex 中正在进行的对话标题和最新回复摘要，并把圆环下推；点击摘要打开 Codex 对应对话。
 - **清晰图标与动画**：使用矢量软件图标、透明背景、圆角、阴影和可中途反向衔接的展开动画。
@@ -42,7 +41,6 @@ Windows 上的独立 Codex 桌宠伴侣，提供额度、Token 统计和原生�
 - Python 3.10 或更高版本；当前版本在 Python 3.10 上验证。
 - 已安装并登录 Codex 桌面应用，且本机可使用其 `app-server`。
 - 本机已经安装兼容的宠物素材。程序读取 `%CODEX_HOME%\pets`，未设置时使用 `%USERPROFILE%\.codex\pets`。仓库不包含可供运行的宠物精灵表。
-- 可选的 VPS 流量接入需要本机 OpenSSH 客户端，以及装有 Python 3 和 systemd 的 Linux VPS。
 
 依赖版本见 [requirements.txt](requirements.txt)。当前宠物读取器支持宽1536、高1872或2288的既有精灵表，每帧192×208。
 
@@ -86,30 +84,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -DisableFollowCo
 - 剩余次数是观察估算：需要至少3次请求、30秒观察时间和1个百分点的额度变化。样本不足显示“采样中”，模型、请求长度和其他设备使用都会影响结果。
 - 仅从 Codex 读取已有活动；桌宠不创建独立对话、不发送消息或附件。
 
-## 接入 VPS 流量
-
-![5h、周额度与VPS流量圆环，使用示例数据](docs/images/vps-traffic.png)
-
-VPS 端按分钟读取指定网卡的收发字节并持久累计，桌宠每分钟通过固定主机密钥的 SSH 连接读取统计；REALITY、HY2 等经过同一网卡的服务一起计入。SSH 专用密钥只能读取流量 JSON，不能执行其他命令、登录交互终端或转发端口，程序不保存 root 密码。
-
-在已验证主机密钥的前提下运行以下命令，按提示输入一次 root 密码安装独立采集器。地址、额度和网卡名应按实际 VPS 修改：
-
-```powershell
-.\.venv\Scripts\python.exe install_vps_traffic.py --host YOUR_VPS --known-hosts C:\path\to\verified_known_hosts --interface eth0 --limit-gb 3000
-```
-
-若 Windows 的代理隧道会影响直连 SSH，可附加 `--local-interface "WLAN 2"`，使用指定的实体网卡。安装器只增加 `codex-pet-traffic` 采集器、定时任务和受限密钥，不重启或改写现有代理服务。已有配置变动前会在 `/var/lib/codex-pet-traffic/` 保存副本。
-
-本机私钥保存在用户的 `AppData/Local/CodexPetUsage/private`，当前用户专用权限；`vps.json` 保存连接路径和月额度，已排除 Git。示例见 `vps.example.json`。未配置时第三个圈显示 `—`。
-
-统计按 **UTC 自然月**累计，月初跨越采样间隔的字节按时间比例分摊。首次接入仅在当前启动完全属于本月时补入开机以来的网卡计数；服务器重启、计数器重置或初始历史缺失会标记不完整。该值是服务器网卡统计，与服务商账单、计费边界可能略有差异；最终额度以服务商面板为准。
-
 ## 本地文件
 
 | 文件或目录 | 内容 |
 | --- | --- |
 | `settings.json` | 宠物位置与偏好 |
-| `vps.json` | 私有 VPS 连接信息及月额度，不含密码 |
 | `work/autostart.log` | 自动启动异常信息 |
 | `startup-error.log` | 启动异常信息 |
 
@@ -126,9 +105,6 @@ VPS 端按分钟读取指定网卡的收发字节并持久累计，桌宠每分�
 | `usage_series.py` | 按日期与小时整理固定柱数的数据 |
 | `quota_estimate.py` | 根据观测消耗估算剩余请求次数 |
 | `pet_autostart.py` | 当前用户的自动启动配置与 Codex 主窗口检测 |
-| `vps_traffic.py` | 固定主机密钥的受限 SSH 流量读取 |
-| `vps_counter.py` | Linux 网卡计数与持久月累计 |
-| `install_vps_traffic.py` | 安装独立采集器、定时器和受限密钥 |
 
 ## 验证
 
@@ -138,7 +114,6 @@ python tests/verify_quota_estimate.py
 python tests/verify_autostart.py
 python tests/verify_usage_ui.py
 python tests/verify_pet_motion.py
-python tests/verify_vps_traffic.py
 ```
 
 统计和自动启动逻辑使用示例数据验证；界面检查覆盖双圆环独立展开、指针保持、面板开关、固定30/7/24根柱、原生摘要跳转与下推、屏幕边缘避让及聊天模块缺失。检查不调用模型或读取个人会话日志。

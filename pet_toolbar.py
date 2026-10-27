@@ -4,7 +4,6 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, Q
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QWidget
 from codex_data import BASE
-from vps_traffic import compact_bytes
 
 
 def text_font(size, weight=QFont.Weight.Normal):
@@ -16,7 +15,7 @@ class Toolbar(QWidget):
     GAP = 8.0
     RUN_INDEX = 0
     QUOTA_INDEX = 1
-    EXPANDED = (136.0, 136.0)
+    EXPANDED = (90.0, 90.0)
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -107,18 +106,17 @@ class Toolbar(QWidget):
         shape.addRoundedRect(rect, rect.height()/2, rect.height()/2)
         return self.isVisible() and self.active_index == self.RUN_INDEX and shape.contains(QPointF(self.mapFromGlobal(global_point)))
 
-    def draw_quota(self, p, centre, value, text=None, stale=False):
+    def draw_quota(self, p, centre, value):
         circle = QRectF(centre.x()-14, centre.y()-14, 28, 28)
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor('#e6deec'), 2.5))
         p.drawEllipse(circle)
         if value is not None:
-            p.setPen(QPen(QColor('#b6afbd' if stale else '#927bad'), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawArc(circle, 90*16, -round(max(0, min(100, value))*3.6*16))
+            p.setPen(QPen(QColor('#927bad'), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(circle, 90*16, -round(value*3.6*16))
         p.setPen(QColor('#63516f'))
         p.setFont(text_font(7, QFont.Weight.Medium))
-        label = text if text is not None else f'{value:.0f}%' if value is not None else '—'
-        p.drawText(circle.adjusted(-2, 0, 2, 0), Qt.AlignmentFlag.AlignCenter, label)
+        p.drawText(circle.adjusted(-2, 0, 2, 0), Qt.AlignmentFlag.AlignCenter, f'{value:.0f}%' if value is not None else '—')
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -152,14 +150,10 @@ class Toolbar(QWidget):
             else:
                 primary = self.owner.remaining('primary')
                 secondary = self.owner.remaining('secondary')
-                first = centre-QPointF(46*t, 0)
+                first = centre-QPointF(23*t, 0)
                 self.draw_quota(p, first, primary)
                 p.setOpacity(t)
                 self.draw_quota(p, first+QPointF(46, 0), secondary)
-                traffic = self.owner.vps_traffic
-                value = traffic['used_percent'] if traffic else None
-                label = compact_bytes(traffic['used_bytes']) if traffic else '—'
-                self.draw_quota(p, first+QPointF(92, 0), value, label, self.owner.vps_error)
             p.restore()
 
     def mousePressEvent(self, event):
