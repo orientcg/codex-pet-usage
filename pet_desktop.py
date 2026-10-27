@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import Qt, QTimer, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, Property, QObject, QEvent
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPixmap, QImage, QCursor, QPainterPath, QLinearGradient, QFontMetrics, QTransform
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPixmap, QImage, QCursor, QPainterPath, QLinearGradient, QFontMetrics
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QListWidget, QListWidgetItem, QMenu, QGraphicsDropShadowEffect, QToolTip, QComboBox, QGraphicsScene, QGraphicsView
 from codex_data import BASE, HOME, read_json, fetch_account, scan_sessions, session_snapshot, session_names, last_request_usage, RollingUsage
@@ -34,6 +34,62 @@ _display_scale_configured = False
 class NoToolTips(QObject):
     def eventFilter(self, source, event):
         return event.type() == QEvent.Type.ToolTip or super().eventFilter(source, event)
+
+
+class SpriteTransition:
+    """Blend action changes, continuing from the visible pose on interruption."""
+    DURATION = .14
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.action = self.target = self.source = None
+        self.started = 0.
+
+    def image(self, target, action, now, animated=True):
+        if self.target is None or not animated:
+            self.reset()
+            self.action, self.target = action, target
+            return target
+        if action != self.action:
+            self.source = self.render(now)
+            self.started, self.action = now, action
+        self.target = target
+        return self.render(now)
+
+    def render(self, now):
+        if self.source is None:
+            return self.target
+        progress = max(0., min(1., (now-self.started)/self.DURATION))
+        if progress >= 1.:
+            self.source = None
+            return self.target
+        if progress == 0.:
+            return self.source
+        progress = progress*progress*(3-2*progress)
+        coverage = round(progress*255)
+        result = QPixmap(self.target.size())
+        result.setDevicePixelRatio(self.target.devicePixelRatio())
+        result.fill(Qt.GlobalColor.transparent)
+        incoming = QPixmap(result.size())
+        incoming.setDevicePixelRatio(result.devicePixelRatio())
+        incoming.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(incoming)
+        # Qt raster opacity uses 256 coverage levels; complementary weights
+        # prevent rounding from making overlapping opaque pixels translucent.
+        painter.setOpacity((coverage+1)/256)
+        painter.drawPixmap(0, 0, self.target)
+        painter.end()
+        painter = QPainter(result)
+        painter.setOpacity((256-coverage)/256)
+        painter.drawPixmap(0, 0, self.source)
+        # Add premultiplied layers so opaque overlapping pixels stay opaque.
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        painter.setOpacity(1.)
+        painter.drawPixmap(0, 0, incoming)
+        painter.end()
+        return result
 
 
 def configure_display_scale():
@@ -802,14 +858,12 @@ class DesktopPet(QWidget):
         self.last_update = None
         self.messages = queue.Queue()
         self.frames, self.frame = {}, 0
+        self.sprite_transition = SpriteTransition()
         self.mood, self.reaction_end = 0, 0
         self.drag_origin, self.dragged = None, False
         self.drag_press = None
         self.carrying = False
-        self.carry_hand, self.carry_phase = -1, 0.
-        self.carry_angle = self.carry_target_angle = 0.
-        self.carry_updated_at = self.carry_pointer_at = 0.
-        self.carry_pointer = None
+        self.carry_hand = -1
         self.hover_until = 0
         self.capsule_hover_since = None
         self.panel_leave_since = None
@@ -847,6 +901,7 @@ class DesktopPet(QWidget):
         self.scan()
 
     def load_pet(self, pet_id=None):
+        self.sprite_transition.reset()
         pets = list((HOME/'pets').glob('*/pet.json'))
         wanted = pet_id or self.settings.get('pet', 'zili')
         conf = next((p for p in pets if p.parent.name == wanted), pets[0] if pets else None)
@@ -914,34 +969,10 @@ class DesktopPet(QWidget):
         return QPointF((self.width()-self.pet_size)/2+self.pet_size*x,
                        self.carry_padding()+self.pet_size*y)
 
-    def sprite_transform(self):
-        transform = QTransform()
-        if self.carrying:
-            anchor = self.carry_anchor()
-            transform.translate(anchor.x(), anchor.y())
-            phase = self.carry_phase if self.animate else 0.
-            struggle = 2.2*math.sin(phase)+.35*math.sin(phase*2)
-            transform.rotate(-self.carry_hand*6+self.carry_angle*.6+struggle)
-            if self.animate:
-                transform.scale(1+.01*math.sin(phase*1.7), 1+.012*math.sin(phase*2))
-            transform.translate(-anchor.x(), -anchor.y())
-        return transform
-
     def sprite_global_rect(self):
         top = self.carry_padding() if self.carrying else 0
         rect = QRectF((self.width()-self.pet_size)/2, top, self.pet_size, self.pet_size*208/192)
-        return self.sprite_transform().mapRect(rect).toAlignedRect().translated(self.pos()).adjusted(-2, -2, 2, 2)
-
-    def advance_carry(self, now):
-        if not self.carrying:
-            return
-        elapsed = max(0., min(.05, now-self.carry_updated_at))
-        self.carry_updated_at = now
-        if self.animate:
-            self.carry_phase += elapsed*math.tau*1.35
-        self.carry_target_angle *= math.exp(-elapsed*10)
-        self.carry_angle += (self.carry_target_angle-self.carry_angle)*(1-math.exp(-elapsed*16))
-        self.update()
+        return rect.toAlignedRect().translated(self.pos()).adjusted(-2, -2, 2, 2)
 
     def protected_rects(self):
         # Protect painted surfaces rather than the pet window's empty margins,
@@ -983,7 +1014,8 @@ class DesktopPet(QWidget):
         self.update()
 
     def handle_pointer(self, mouse, now):
-        self.advance_carry(now)
+        if self.sprite_transition.source is not None:
+            self.update()
         if self.carrying:
             self.capsule_hover_since = self.panel_leave_since = None
             self.toolbar.set_active(None)
@@ -1044,7 +1076,8 @@ class DesktopPet(QWidget):
         row, index = self.animation_frame()
         frames = self.frames.get(row, self.frames[0])
         image = frames[index % len(frames)]
-        p.setTransform(self.sprite_transform())
+        action = ('held', self.carry_hand) if self.carrying else ('state', 0 if row >= 9 else row)
+        image = self.sprite_transition.image(image, action, time.monotonic(), self.animate)
         top = self.carry_padding() if self.carrying else 0
         p.drawPixmap(QPointF((self.width()-image.deviceIndependentSize().width())/2, top), image)
 
@@ -1060,25 +1093,16 @@ class DesktopPet(QWidget):
     def mouseMoveEvent(self, event):
         if self.drag_origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
             pointer = event.globalPosition().toPoint()
-            now = time.monotonic()
             if not self.carrying:
                 if (pointer-self.drag_press).manhattanLength() <= 4:
                     return
                 self.carrying = self.dragged = True
-                self.carry_phase = 0.
                 self.frame = 0
                 self.reaction_end = 0
-                self.carry_updated_at = self.carry_pointer_at = now
-                self.carry_pointer = pointer
                 self.drag_origin = self.carry_anchor().toPoint()
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.panel.retract()
                 self.layout_stack(animated=False)
-            else:
-                elapsed = max(1/240, now-self.carry_pointer_at)
-                velocity = (pointer.x()-self.carry_pointer.x())/elapsed
-                self.carry_target_angle = max(-12., min(12., velocity*.035))
-                self.carry_pointer, self.carry_pointer_at = pointer, now
             self.move(pointer-self.drag_origin)
             self.speech.position_near_pet()
             self.update()
@@ -1088,8 +1112,6 @@ class DesktopPet(QWidget):
             return
         if self.carrying:
             self.carrying = False
-            self.carry_angle = self.carry_target_angle = 0.
-            self.carry_pointer = None
             self.unsetCursor()
             self.move(self.pos()+QPoint(0, self.carry_padding()))
             self.layout_stack()
