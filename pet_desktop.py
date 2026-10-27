@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import Qt, QTimer, QRect, QRectF, QPoint, QPointF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, Property, QObject, QEvent
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPixmap, QImage, QCursor, QPainterPath, QLinearGradient, QFontMetrics
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPixmap, QImage, QCursor, QPainterPath, QLinearGradient, QFontMetrics, QTransform
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QListWidget, QListWidgetItem, QMenu, QGraphicsDropShadowEffect, QToolTip, QComboBox, QGraphicsScene, QGraphicsView
 from codex_data import BASE, HOME, read_json, fetch_account, scan_sessions, session_snapshot, session_names, last_request_usage, RollingUsage
@@ -22,6 +22,8 @@ INK = '#37313f'
 MUTED = '#96909f'
 PURPLE = '#8e78a9'
 FRAME_COUNTS = [6, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8]
+ANIMATION_FRAME_MS = 100
+CARRY_ROW = 6  # Hands at the collar; no dedicated carried row in the sprite format.
 STATE_NAMES = {'running': '正在工作', 'ready': '已完成', 'stopped': '已中断', 'unknown': '状态待确认'}
 DEFAULT_UI_SCALE = 1.3
 _display_scale_configured = False
@@ -800,6 +802,11 @@ class DesktopPet(QWidget):
         self.frames, self.frame = {}, 0
         self.mood, self.reaction_end = 0, 0
         self.drag_origin, self.dragged = None, False
+        self.drag_press = None
+        self.carrying = False
+        self.carry_angle = self.carry_target_angle = 0.
+        self.carry_updated_at = self.carry_pointer_at = 0.
+        self.carry_pointer = None
         self.hover_until = 0
         self.capsule_hover_since = None
         self.panel_leave_since = None
@@ -817,8 +824,9 @@ class DesktopPet(QWidget):
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(max(screen.left(), min(self.settings.get('x', screen.right()-300), screen.right()-self.width()+1)), max(screen.top(), min(self.settings.get('y', screen.bottom()-260), screen.bottom()-self.height()+1)))
         self.tick_timer = QTimer(self)
+        self.tick_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.tick_timer.timeout.connect(self.tick)
-        self.tick_timer.start(130)
+        self.tick_timer.start(ANIMATION_FRAME_MS)
         self.hover_timer = QTimer(self)
         self.hover_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.hover_timer.timeout.connect(lambda: self.handle_pointer(QCursor.pos(), time.monotonic()))
@@ -866,6 +874,8 @@ class DesktopPet(QWidget):
 
     def layout_stack(self, animated=True):
         body_height = round(self.pet_size*208/192)
+        if self.carrying:
+            body_height += 2*self.carry_padding()
         summary_gap = self.speech.height()+8 if self.speech.isVisible() else 0
         target = QPoint((self.width()-self.toolbar.width())//2, body_height+5+summary_gap)
         self.stack_target_height = target.y()+self.toolbar.height()+5
@@ -893,8 +903,34 @@ class DesktopPet(QWidget):
         if self.panel.isVisible():
             self.panel.place_near_pet()
 
+    def carry_padding(self):
+        return max(8, round(self.pet_size*.14))
+
+    def carry_anchor(self):
+        return QPointF(self.width()/2, self.carry_padding()+self.pet_size*.44)
+
+    def sprite_transform(self):
+        transform = QTransform()
+        if self.carrying:
+            anchor = self.carry_anchor()
+            transform.translate(anchor.x(), anchor.y())
+            transform.rotate(self.carry_angle)
+            transform.translate(-anchor.x(), -anchor.y())
+        return transform
+
     def sprite_global_rect(self):
-        return QRect(self.x()+(self.width()-self.pet_size)//2-2, self.y()-2, self.pet_size+4, round(self.pet_size*208/192)+4)
+        top = self.carry_padding() if self.carrying else 0
+        rect = QRectF((self.width()-self.pet_size)/2, top, self.pet_size, self.pet_size*208/192)
+        return self.sprite_transform().mapRect(rect).toAlignedRect().translated(self.pos()).adjusted(-2, -2, 2, 2)
+
+    def advance_carry(self, now):
+        if not self.carrying:
+            return
+        elapsed = max(0., min(.05, now-self.carry_updated_at))
+        self.carry_updated_at = now
+        self.carry_target_angle *= math.exp(-elapsed*10)
+        self.carry_angle += (self.carry_target_angle-self.carry_angle)*(1-math.exp(-elapsed*16))
+        self.update()
 
     def protected_rects(self):
         # Protect painted surfaces rather than the pet window's empty margins,
@@ -936,6 +972,12 @@ class DesktopPet(QWidget):
         self.update()
 
     def handle_pointer(self, mouse, now):
+        self.advance_carry(now)
+        if self.carrying:
+            self.capsule_hover_since = self.panel_leave_since = None
+            self.toolbar.set_active(None)
+            self.panel.retract()
+            return
         if self.frameGeometry().contains(mouse):
             self.hover_until = now+.65
         self.toolbar.setVisible(True)
@@ -967,14 +1009,8 @@ class DesktopPet(QWidget):
         else:
             self.panel_leave_since = None
 
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if not self.frames:
-            p.setPen(QColor(PURPLE))
-            p.drawText(QRectF(0, 0, self.width(), 90), Qt.AlignmentFlag.AlignCenter, '未找到宠物素材')
-            return
-        row = self.mood if time.time() < self.reaction_end else 7 if self.running_count() else 0
+    def animation_frame(self):
+        row = CARRY_ROW if self.carrying else self.mood if time.time() < self.reaction_end else 7 if self.running_count() else 0
         index = self.frame if self.animate else 0
         if row == 0 and 9 in self.frames and self.animate:
             mouse = self.mapFromGlobal(QCursor.pos())
@@ -982,32 +1018,70 @@ class DesktopPet(QWidget):
             if 40 < math.hypot(dx, dy) < 420:
                 index = round(math.degrees(math.atan2(dx, -dy))/22.5) % 16
                 row, index = 9+index//8, index % 8
+        return row, index
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        if not self.frames:
+            p.setPen(QColor(PURPLE))
+            p.drawText(QRectF(0, 0, self.width(), 90), Qt.AlignmentFlag.AlignCenter, '未找到宠物素材')
+            return
+        row, index = self.animation_frame()
         frames = self.frames.get(row, self.frames[0])
         image = frames[index % len(frames)]
-        p.drawPixmap(QPointF((self.width()-image.deviceIndependentSize().width())/2, 0), image)
+        p.setTransform(self.sprite_transform())
+        top = self.carry_padding() if self.carrying else 0
+        p.drawPixmap(QPointF((self.width()-image.deviceIndependentSize().width())/2, top), image)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
             event.accept()
         elif event.button() == Qt.MouseButton.LeftButton:
             self.drag_origin = event.globalPosition().toPoint()-self.pos()
+            self.drag_press = event.globalPosition().toPoint()
             self.dragged = False
 
     def mouseMoveEvent(self, event):
         if self.drag_origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            target = event.globalPosition().toPoint()-self.drag_origin
-            if (target-self.pos()).manhattanLength() > 2:
-                self.dragged = True
-                self.react(1 if target.x() >= self.x() else 2, .3)
-                self.move(target)
-                self.speech.position_near_pet()
-                if self.panel.isVisible():
-                    self.panel.place_near_pet()
+            pointer = event.globalPosition().toPoint()
+            now = time.monotonic()
+            if not self.carrying:
+                if (pointer-self.drag_press).manhattanLength() <= 4:
+                    return
+                self.carrying = self.dragged = True
+                self.frame = 0
+                self.reaction_end = 0
+                self.carry_updated_at = self.carry_pointer_at = now
+                self.carry_pointer = pointer
+                self.drag_origin = self.carry_anchor().toPoint()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.panel.retract()
+                self.layout_stack(animated=False)
+            else:
+                elapsed = max(1/240, now-self.carry_pointer_at)
+                velocity = (pointer.x()-self.carry_pointer.x())/elapsed
+                self.carry_target_angle = max(-12., min(12., velocity*.035))
+                self.carry_pointer, self.carry_pointer_at = pointer, now
+            self.move(pointer-self.drag_origin)
+            self.speech.position_near_pet()
+            self.update()
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.dragged:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self.carrying:
+            self.carrying = False
+            self.carry_angle = self.carry_target_angle = 0.
+            self.carry_pointer = None
+            self.unsetCursor()
+            self.move(self.pos()+QPoint(0, self.carry_padding()))
+            self.layout_stack()
+            self.react(4, .5)
+        elif not self.dragged:
             self.react(3)
-        self.drag_origin = None
+        self.drag_origin = self.drag_press = None
 
     def react(self, mood, seconds=1.5):
         self.mood, self.frame, self.reaction_end = mood, 0, time.time()+seconds
