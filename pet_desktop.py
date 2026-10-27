@@ -23,7 +23,9 @@ MUTED = '#96909f'
 PURPLE = '#8e78a9'
 FRAME_COUNTS = [6, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8]
 ANIMATION_FRAME_MS = 100
-CARRY_ROW = 6  # Hands at the collar; no dedicated carried row in the sprite format.
+CARRY_ROW = 3
+# Raised palms in the waving row; keep the selected hand still at the pointer.
+CARRY_HANDS = {-1: (1, 54/192, 80/192), 1: (2, 144/192, 78/192)}
 STATE_NAMES = {'running': '正在工作', 'ready': '已完成', 'stopped': '已中断', 'unknown': '状态待确认'}
 DEFAULT_UI_SCALE = 1.3
 _display_scale_configured = False
@@ -804,6 +806,7 @@ class DesktopPet(QWidget):
         self.drag_origin, self.dragged = None, False
         self.drag_press = None
         self.carrying = False
+        self.carry_hand, self.carry_phase = -1, 0.
         self.carry_angle = self.carry_target_angle = 0.
         self.carry_updated_at = self.carry_pointer_at = 0.
         self.carry_pointer = None
@@ -904,17 +907,23 @@ class DesktopPet(QWidget):
             self.panel.place_near_pet()
 
     def carry_padding(self):
-        return max(8, round(self.pet_size*.14))
+        return max(8, round(self.pet_size*.17))
 
     def carry_anchor(self):
-        return QPointF(self.width()/2, self.carry_padding()+self.pet_size*.44)
+        _, x, y = CARRY_HANDS[self.carry_hand]
+        return QPointF((self.width()-self.pet_size)/2+self.pet_size*x,
+                       self.carry_padding()+self.pet_size*y)
 
     def sprite_transform(self):
         transform = QTransform()
         if self.carrying:
             anchor = self.carry_anchor()
             transform.translate(anchor.x(), anchor.y())
-            transform.rotate(self.carry_angle)
+            phase = self.carry_phase if self.animate else 0.
+            struggle = 2.2*math.sin(phase)+.35*math.sin(phase*2)
+            transform.rotate(-self.carry_hand*6+self.carry_angle*.6+struggle)
+            if self.animate:
+                transform.scale(1+.01*math.sin(phase*1.7), 1+.012*math.sin(phase*2))
             transform.translate(-anchor.x(), -anchor.y())
         return transform
 
@@ -928,6 +937,8 @@ class DesktopPet(QWidget):
             return
         elapsed = max(0., min(.05, now-self.carry_updated_at))
         self.carry_updated_at = now
+        if self.animate:
+            self.carry_phase += elapsed*math.tau*1.35
         self.carry_target_angle *= math.exp(-elapsed*10)
         self.carry_angle += (self.carry_target_angle-self.carry_angle)*(1-math.exp(-elapsed*16))
         self.update()
@@ -1010,7 +1021,9 @@ class DesktopPet(QWidget):
             self.panel_leave_since = None
 
     def animation_frame(self):
-        row = CARRY_ROW if self.carrying else self.mood if time.time() < self.reaction_end else 7 if self.running_count() else 0
+        if self.carrying:
+            return CARRY_ROW, CARRY_HANDS[self.carry_hand][0]
+        row = self.mood if time.time() < self.reaction_end else 7 if self.running_count() else 0
         index = self.frame if self.animate else 0
         if row == 0 and 9 in self.frames and self.animate:
             mouse = self.mapFromGlobal(QCursor.pos())
@@ -1041,6 +1054,7 @@ class DesktopPet(QWidget):
         elif event.button() == Qt.MouseButton.LeftButton:
             self.drag_origin = event.globalPosition().toPoint()-self.pos()
             self.drag_press = event.globalPosition().toPoint()
+            self.carry_hand = -1 if event.position().x() < self.width()/2 else 1
             self.dragged = False
 
     def mouseMoveEvent(self, event):
@@ -1051,6 +1065,7 @@ class DesktopPet(QWidget):
                 if (pointer-self.drag_press).manhattanLength() <= 4:
                     return
                 self.carrying = self.dragged = True
+                self.carry_phase = 0.
                 self.frame = 0
                 self.reaction_end = 0
                 self.carry_updated_at = self.carry_pointer_at = now
